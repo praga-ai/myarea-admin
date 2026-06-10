@@ -38,10 +38,10 @@ const mimeTypes = {
 
 const server = http.createServer((req, res) => {
   const parsedUrl = url.parse(req.url, true);
-  let pathname = `.${parsedUrl.pathname}`;
+  let pathname = parsedUrl.pathname;
 
-  if (pathname === './') {
-    pathname = './index.html';
+  if (pathname === '/') {
+    pathname = '/index.html';
   }
 
   let filepath = path.join(BUILD_DIR, pathname);
