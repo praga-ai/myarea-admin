@@ -76,11 +76,6 @@ jobs:
           name: build-output
           path: build/
 
-      - name: Copy configuration files
-        run: |
-          cp web.config build/
-          cp .deployment build/
-
       - name: Azure Login
         uses: azure/login@v1
         with:
@@ -120,11 +115,6 @@ jobs:
           name: build-output
           path: build/
 
-      - name: Copy configuration files
-        run: |
-          cp web.config build/
-          cp .deployment build/
-
       - name: Azure Login
         uses: azure/login@v1
         with:
@@ -132,10 +122,6 @@ jobs:
 
       - name: Create deployment package
         run: |
-          # Copy configuration files to build folder
-          cp web.config build/
-          cp .deployment build/
-
           # Create zip package
           cd build
           zip -r ../survey-admin-web.zip .
