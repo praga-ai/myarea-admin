@@ -1,0 +1,46 @@
+{
+  "name": "myarea-admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MyArea Admin Web Application",
+  "homepage": "./",
+  "dependencies": {
+    "@types/node": "^20.10.6",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "ajv": "^8.20.0",
+    "axios": "^1.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.30.4",
+    "recharts": "^3.8.1",
+    "typescript": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "react-scripts": "5.0.1"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

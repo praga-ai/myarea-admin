@@ -1,0 +1,205 @@
+name: CI/CD Pipeline - Survey Admin Web App
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Step 1: Build and Test
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint --if-present
+
+      - name: Build application
+        run: npm run build
+
+      - name: Run tests
+        run: npm test -- --coverage --watchAll=false
+        continue-on-error: true
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/lcov.info
+        continue-on-error: true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-output
+          path: build/
+          retention-days: 5
+
+  # Step 2: Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+
+    environment:
+      name: staging
+      url: https://app-survey-admin-cs-dev-staging.azurewebsites.net
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-output
+          path: build/
+
+      - name: Copy configuration files
+        run: |
+          cp web.config build/
+          cp .deployment build/
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Staging Slot
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: app-survey-admin-cs-dev
+          slot-name: staging
+          package: build/
+
+      - name: Smoke Tests - Staging
+        run: |
+          echo "Running smoke tests against staging..."
+          curl -f https://app-survey-admin-cs-dev-staging.azurewebsites.net/ || exit 1
+          echo "Staging deployment successful!"
+
+  # Step 3: Deploy to Production
+  deploy-production:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    environment:
+      name: production
+      url: https://app-survey-admin-cs-dev.azurewebsites.net
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-output
+          path: build/
+
+      - name: Copy configuration files
+        run: |
+          cp web.config build/
+          cp .deployment build/
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create deployment package
+        run: |
+          # Copy configuration files to build folder
+          cp web.config build/
+          cp .deployment build/
+
+          # Create zip package
+          cd build
+          zip -r ../survey-admin-web.zip .
+          cd ..
+
+      - name: Deploy to Production
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: app-survey-admin-cs-dev
+          package: survey-admin-web.zip
+
+      - name: Smoke Tests - Production
+        run: |
+          echo "Running smoke tests against production..."
+          curl -f https://app-survey-admin-cs-dev.azurewebsites.net/ || exit 1
+          echo "Production deployment successful!"
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            Production deployment completed successfully
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+          draft: false
+          prerelease: false
+
+  # Step 4: Notify
+  notify:
+    name: Send Notifications
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.build.result }}" == "success" ]; then
+            echo "BUILD_STATUS=✅ BUILD SUCCESS" >> $GITHUB_OUTPUT
+          else
+            echo "BUILD_STATUS=❌ BUILD FAILED" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "text": "${{ steps.status.outputs.BUILD_STATUS }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Survey Admin Web App - CI/CD Pipeline*\n${{ steps.status.outputs.BUILD_STATUS }}\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref }}\n*Commit:* ${{ github.sha }}\n*Author:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        if: always()
+

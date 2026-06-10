@@ -1,0 +1,274 @@
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - src/*
+    - public/*
+    - package.json
+    - tsconfig.json
+    - azure-pipelines.yml
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
+
+variables:
+  nodeVersion: '18.x'
+  buildOutputPath: '$(Build.ArtifactStagingDirectory)/build'
+  appName: 'app-survey-admin-cs-dev'
+  resourceGroup: 'survey-admin-rg'
+
+stages:
+  # Stage 1: Build
+  - stage: Build
+    displayName: 'Build & Test'
+    jobs:
+      - job: BuildApp
+        displayName: 'Build Application'
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - task: Npm@1
+            displayName: 'Install Dependencies'
+            inputs:
+              command: 'install'
+              workingDir: '$(System.DefaultWorkingDirectory)'
+
+          - task: Npm@1
+            displayName: 'Run Linter'
+            inputs:
+              command: 'custom'
+              customCommand: 'run lint'
+            continueOnError: true
+
+          - task: Npm@1
+            displayName: 'Build Application'
+            inputs:
+              command: 'custom'
+              customCommand: 'run build'
+
+          - task: Npm@1
+            displayName: 'Run Tests'
+            inputs:
+              command: 'custom'
+              customCommand: 'test -- --coverage --watchAll=false'
+            continueOnError: true
+
+          - task: PublishCodeCoverageResults@1
+            displayName: 'Publish Code Coverage'
+            inputs:
+              codeCoverageTool: Cobertura
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage/cobertura-coverage.xml'
+            continueOnError: true
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Build Artifacts'
+            inputs:
+              PathtoPublish: '$(System.DefaultWorkingDirectory)/build'
+              ArtifactName: 'build-output'
+              publishLocation: 'Container'
+
+  # Stage 2: Deploy to Staging
+  - stage: DeployStaging
+    displayName: 'Deploy to Staging'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - deployment: DeployStaging
+        displayName: 'Deploy to Staging Slot'
+        environment:
+          name: 'staging'
+          resourceType: VirtualMachine
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: DownloadBuildArtifacts@0
+                  displayName: 'Download Build Artifacts'
+                  inputs:
+                    buildType: 'current'
+                    downloadType: 'single'
+                    artifactName: 'build-output'
+                    downloadPath: '$(Pipeline.Workspace)'
+
+                - task: AzureFileCopy@4
+                  displayName: 'Copy Files to Staging'
+                  inputs:
+                    SourcePath: '$(Pipeline.Workspace)/build-output/*'
+                    azureSubscription: 'Azure-Subscription'
+                    Destination: 'AzureBlob'
+                    storage: 'storageaccountname'
+                    ContainerName: 'staging'
+
+                - task: AzureAppServiceManage@0
+                  displayName: 'Stop Staging Slot'
+                  inputs:
+                    azureSubscription: 'Azure-Subscription'
+                    ResourceGroupName: $(resourceGroup)
+                    WebAppName: $(appName)
+                    Action: 'Stop Azure App Service'
+                    SlotName: 'staging'
+
+                - task: AzureRmWebAppDeployment@4
+                  displayName: 'Deploy to Staging Slot'
+                  inputs:
+                    azureSubscription: 'Azure-Subscription'
+                    appType: 'webAppLinux'
+                    WebAppName: $(appName)
+                    deployToSlotOrASE: true
+                    ResourceGroupName: $(resourceGroup)
+                    SlotName: 'staging'
+                    packageForLinux: '$(Pipeline.Workspace)/build-output'
+                    RuntimeStack: 'NODE|18-lts'
+                    StartupCommand: 'npm start'
+
+                - task: AzureAppServiceManage@0
+                  displayName: 'Start Staging Slot'
+                  inputs:
+                    azureSubscription: 'Azure-Subscription'
+                    ResourceGroupName: $(resourceGroup)
+                    WebAppName: $(appName)
+                    Action: 'Start Azure App Service'
+                    SlotName: 'staging'
+
+                - script: |
+                    echo "Running smoke tests against staging..."
+                    for i in {1..30}; do
+                      if curl -f https://$(appName)-staging.azurewebsites.net/ 2>/dev/null; then
+                        echo "✓ Staging is responding"
+                        exit 0
+                      fi
+                      echo "Attempt $i - Waiting for app to start..."
+                      sleep 2
+                    done
+                    echo "✗ Staging not responding after 60 seconds"
+                    exit 1
+                  displayName: 'Smoke Tests - Staging'
+
+  # Stage 3: Deploy to Production
+  - stage: DeployProduction
+    displayName: 'Deploy to Production'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployProduction
+        displayName: 'Deploy to Production'
+        environment:
+          name: 'production'
+          resourceType: VirtualMachine
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: DownloadBuildArtifacts@0
+                  displayName: 'Download Build Artifacts'
+                  inputs:
+                    buildType: 'current'
+                    downloadType: 'single'
+                    artifactName: 'build-output'
+                    downloadPath: '$(Pipeline.Workspace)'
+
+                - task: AzureRmWebAppDeployment@4
+                  displayName: 'Deploy to Production'
+                  inputs:
+                    azureSubscription: 'Azure-Subscription'
+                    appType: 'webAppLinux'
+                    WebAppName: $(appName)
+                    ResourceGroupName: $(resourceGroup)
+                    packageForLinux: '$(Pipeline.Workspace)/build-output'
+                    RuntimeStack: 'NODE|18-lts'
+
+                - script: |
+                    echo "Running smoke tests against production..."
+                    for i in {1..30}; do
+                      if curl -f https://$(appName).azurewebsites.net/ 2>/dev/null; then
+                        echo "✓ Production is responding"
+                        exit 0
+                      fi
+                      echo "Attempt $i - Waiting for app to start..."
+                      sleep 2
+                    done
+                    echo "✗ Production not responding after 60 seconds"
+                    exit 1
+                  displayName: 'Smoke Tests - Production'
+
+                - task: GitHubRelease@1
+                  displayName: 'Create GitHub Release'
+                  inputs:
+                    gitHubConnection: 'GitHub-Connection'
+                    repositoryName: '$(Build.Repository.Name)'
+                    action: 'create'
+                    target: '$(Build.SourceVersion)'
+                    tagSource: 'userSpecifiedTag'
+                    tag: 'v$(Build.BuildNumber)'
+                    releaseNotesSource: 'inline'
+                    releaseNotesInline: 'Production deployment completed successfully'
+                    isDraft: false
+                    isPrerelease: false
+                  continueOnError: true
+
+  # Stage 4: Notify
+  - stage: Notify
+    displayName: 'Send Notifications'
+    dependsOn: [Build, DeployStaging, DeployProduction]
+    condition: always()
+    jobs:
+      - job: NotifySuccess
+        displayName: 'Notify Success'
+        condition: succeeded()
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        steps:
+          - task: Slack@0
+            displayName: 'Post to Slack'
+            inputs:
+              webhookUrl: '$(SlackWebhook)'
+              title: '✅ Survey Admin Web App - Deployment Success'
+              message: |
+                Repository: $(Build.Repository.Name)
+                Branch: $(Build.SourceBranch)
+                Commit: $(Build.SourceVersion)
+                Author: $(Build.RequestedFor)
+              buttonText: 'View Pipeline'
+              buttonLink: '$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)'
+            continueOnError: true
+
+      - job: NotifyFailure
+        displayName: 'Notify Failure'
+        condition: failed()
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        steps:
+          - task: Slack@0
+            displayName: 'Post to Slack'
+            inputs:
+              webhookUrl: '$(SlackWebhook)'
+              title: '❌ Survey Admin Web App - Deployment Failed'
+              message: |
+                Repository: $(Build.Repository.Name)
+                Branch: $(Build.SourceBranch)
+                Commit: $(Build.SourceVersion)
+                Author: $(Build.RequestedFor)
+                Error: Pipeline failed. Check logs for details.
+              buttonText: 'View Logs'
+              buttonLink: '$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)'
+            continueOnError: true
