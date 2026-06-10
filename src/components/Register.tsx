@@ -12,7 +12,7 @@ export const Register: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
+  useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -49,7 +49,7 @@ export const Register: React.FC = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json();
         // Store minimal data for verification step
         localStorage.setItem('pendingEmail', email);
         setSuccess('Registration request submitted! Check your email for verification code...');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Users.css';
@@ -19,15 +19,7 @@ export const Users: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!hasRole('Admin')) {
-      navigate('/unauthorized');
-      return;
-    }
-    loadUsers();
-  }, [token]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setError('');
 
     // Mock users for demo
@@ -89,7 +81,15 @@ export const Users: React.FC = () => {
 
     setUsers(users);
     setLoading(false);
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (!hasRole('Admin')) {
+      navigate('/unauthorized');
+      return;
+    }
+    loadUsers();
+  }, [hasRole, loadUsers, navigate]);
 
   const handleBack = () => {
     navigate('/dashboard');
