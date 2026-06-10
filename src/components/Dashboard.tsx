@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import './Dashboard.css';
 
@@ -24,11 +24,7 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadSurveys();
-  }, [token]);
-
-  const loadSurveys = async () => {
+  const loadSurveys = useCallback(async () => {
     setError('');
 
     // Generate realistic mock survey data with only political questions
@@ -73,7 +69,11 @@ export const Dashboard: React.FC = () => {
 
     setSurveys(surveys);
     setLoading(false);
-  };
+  }, [token]);
+
+  useEffect(() => {
+    loadSurveys();
+  }, [loadSurveys]);
 
   const handleLogout = () => {
     logout();

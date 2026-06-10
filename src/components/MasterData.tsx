@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './MasterData.css';
@@ -17,15 +17,7 @@ export const MasterData: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!hasRole('Admin')) {
-      navigate('/unauthorized');
-      return;
-    }
-    loadMasterData();
-  }, [token]);
-
-  const loadMasterData = async () => {
+  const loadMasterData = useCallback(async () => {
     setError('');
 
     // Mock data for demo
@@ -95,7 +87,15 @@ export const MasterData: React.FC = () => {
 
     setData(data);
     setLoading(false);
-  };
+  }, [token]);
+
+  useEffect(() => {
+    if (!hasRole('Admin')) {
+      navigate('/unauthorized');
+      return;
+    }
+    loadMasterData();
+  }, [hasRole, loadMasterData, navigate]);
 
   const handleBack = () => {
     navigate('/dashboard');

@@ -1,11 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTheme, THEMES, ThemeName } from '../context/ThemeContext';
+import { useTheme, ThemeName } from '../context/ThemeContext';
 import './ThemeSettings.css';
 
 export const ThemeSettings: React.FC = () => {
-  const { user, logout, hasRole } = useAuth();
+  const { logout, hasRole } = useAuth();
   const navigate = useNavigate();
   const { currentTheme, themeName, setTheme, availableThemes } = useTheme();
 
