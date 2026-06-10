@@ -79,6 +79,8 @@ jobs:
           mkdir -p deploy
           cp app.js deploy/
           cp package.json deploy/
+          cp startup.sh deploy/
+          cp -r .azure deploy/
           cp -r build deploy/
 
       - name: Azure Login
@@ -131,6 +133,8 @@ jobs:
           mkdir -p deploy-prod
           cp app.js deploy-prod/
           cp package.json deploy-prod/
+          cp startup.sh deploy-prod/
+          cp -r .azure deploy-prod/
           cp -r build deploy-prod/
 
           # Create zip package
